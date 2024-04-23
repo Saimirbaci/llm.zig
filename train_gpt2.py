@@ -11,12 +11,14 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 
 import os
 import math
+import struct
 from dataclasses import dataclass
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import torch._inductor.config as config
 
 class NewGELU(nn.Module):
     """Careful there are a few versions of GeLU, this one is the exact one used by OpenAI"""
@@ -37,7 +39,7 @@ class CausalSelfAttention(nn.Module):
         self.n_embd = config.n_embd
         # not really a 'bias', more of a mask, but following the OpenAI/HF naming though
         self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
-                                     .view(1, 1, config.block_size, config.block_size))
+                             .view(1, 1, config.block_size, config.block_size))
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -290,11 +292,27 @@ def write_state(model, x, y, logits, loss, filename):
         write_tensors(grads, model.config.n_layer, file)
     print(f"wrote {filename}")
 
+def write_tokenizer(enc, filename):
+    n = enc.max_token_value + 1
+    header = torch.zeros(256, dtype=torch.int32)
+    header[0] = 20240328 # magic
+    header[1] = 1 # tokenizer version = 1
+    header[2] = n # number of tokens
+    with open(filename, "wb") as file:
+        file.write(header.numpy().tobytes())
+        for i in range(n):
+            b = enc.decode_bytes([i])
+            length = len(b)
+            assert length < 256, f"Token length exceeds 255: {length}"
+            file.write(struct.pack("<B", length))  # Write the length as a 1-byte unsigned integer
+            file.write(b)  # Write the actual bytes
+    print(f"wrote {filename}")
 
 if __name__ == "__main__":
     import time
     import argparse
     import tiktoken
+    print(f"Running pytorch {torch.version.__version__}")
 
     # default settings will overfit a tiny batch of data
     # and save model weights and debug state to disk on the first iteration
@@ -330,6 +348,8 @@ if __name__ == "__main__":
     encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
     decode = lambda l: enc.decode(l)
 
+    write_tokenizer(enc, "gpt2_tokenizer.bin")
+
     if args.tensorcores:
         torch.set_float32_matmul_precision('high')
 
@@ -338,6 +358,7 @@ if __name__ == "__main__":
     model.train()
     model.to(device)
     if args.compile:
+        config.coordinate_descent_tuning = True # suggested by @Chillee
         print("compiling the model...")
         model = torch.compile(model)
 
@@ -374,21 +395,39 @@ if __name__ == "__main__":
     # forward backward for a few iterations
     data_iter = iter(get_batch())
     x, y = next(data_iter) # we'll overfit this batch below
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    # do one forward pass to generate ground truth for our C tests
+    if not args.inference_only and args.write_tensors:
+        logits, loss = model(x, y)
+        write_model(model, "gpt2_124M.bin")
+        write_state(model, x, y, logits, loss, "gpt2_124M_debug_state.bin")
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, fused=True)
+    timings = []
+    torch.cuda.reset_peak_memory_stats()
     for i in range(args.num_iterations):
         t0 = time.time()
         logits, loss = model(x, y)
         if not args.inference_only:
             optimizer.zero_grad()
+            del logits
             loss.backward()
-            # on the first iteration only, save the state dict to file for later reference
-            if i == 0 and args.write_tensors:
-                write_model(model, "gpt2_124M.bin")
-                write_state(model, x, y, logits, loss, "gpt2_124M_debug_state.bin")
             optimizer.step()
-        torch.cuda.synchronize()
+        if device == "mps":
+            torch.mps.synchronize()
+        elif device == "cuda":
+            torch.cuda.synchronize()
         t1 = time.time()
+        if i > args.num_iterations - 20:
+            timings.append(t1-t0)
         print(f"iteration {i}, loss: {loss.item()}, time: {(t1-t0)*1000:.3f}ms")
+
+    if len(timings) > 20:
+        print(f"final 20 iters avg: {np.mean(timings[-20:])*1000:.3f}ms")
+    else:
+        print(f"final {len(timings)-1} iters avg: {np.mean(timings[1:])*1000:.3f}ms")
+
+    print(f"Peak memory consumption: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB")
 
     # before we end, let's also do one round of inference
     # we'll kick off the generation with "<|endoftext|>", which designates the start of a new sequence
