@@ -26,9 +26,13 @@ python prepro_tinyshakespeare.py
 ### Generate pretrained data using the Nano Gpt2 model
 Download the GPT-2 weights and save them as a checkpoint we can load in Zig:
 
+The following command will download the GPT-2 124M a tokenizer model and save it in the data folder. 
+
 ```bash
-python train_gpt2.py
+python train_gpt2.py  
 mv gpt2_124M.bin data/
+mv gpt2_tokenizer.bin data/
+mv gpt2_124M_debug_state.bin data/
 ```
 
 ### Compile the code
