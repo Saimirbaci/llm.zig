@@ -279,9 +279,9 @@ pub fn encoder_forward_vec( comptime N: usize, output : []LlmFloat, input: []u32
         for(0..T) |t| {
             for(0..C/N) |i| {
                 const ix: u32 = input[b * T + t];
-                const wte_ix : @Vector(N , f32)  = wte[ix * C + i*N..][0..N].*;
-                const wpe_t : @Vector(N , f32)  = wpe[t * C + i*N..][0..N].*;
-                const res: [N]f32 = wte_ix + wpe_t;
+                const wte_ix : @Vector(N , LlmFloat)  = wte[ix * C + i*N..][0..N].*;
+                const wpe_t : @Vector(N , LlmFloat)  = wpe[t * C + i*N..][0..N].*;
+                const res: [N]LlmFloat = wte_ix + wpe_t;
                 const start = b * T * C + t * C + i * N;
                 const end = start + N;
                 @memcpy(output[start..end], &res);
@@ -332,10 +332,10 @@ pub fn encoder_backward_vec( comptime N: u32, dwte: []LlmFloat, dwpe: []LlmFloat
                 const idx = b * T * C + t * C + i * N;
                 const dout_bt = dout[idx..][0..N].*;
                 const ix: usize = inp[b * T + t];
-                const dwte_ix: @Vector(N , f32) = dwte[ix * C + i * N..][0..N].*;
-                const dwpe_t: @Vector(N , f32) = dwpe[t * C + i * N..][0..N].*;
-                const res_wte: [N]f32 = dout_bt + dwte_ix;
-                const res_wpe: [N]f32 = dout_bt + dwpe_t;
+                const dwte_ix: @Vector(N , LlmFloat) = dwte[ix * C + i * N..][0..N].*;
+                const dwpe_t: @Vector(N , LlmFloat) = dwpe[t * C + i * N..][0..N].*;
+                const res_wte: [N]LlmFloat = dout_bt + dwte_ix;
+                const res_wpe: [N]LlmFloat = dout_bt + dwpe_t;
                 @memcpy(dwte[ix * C + i * N..][0..N], &res_wte);
                 @memcpy(dwpe[t * C + i * N..][0..N], &res_wpe);
                 }
@@ -405,14 +405,14 @@ pub fn layernorm_forward_vec(comptime N: usize, output: []LlmFloat, mean: []LlmF
             var m: LlmFloat = 0.0; // mean
             var v: LlmFloat = 0.0; // variance
             for (0..C/N)|i|{
-                const x:@Vector(N , f32) = input[start + i*N ..][0..N].*;
+                const x:@Vector(N , LlmFloat) = input[start + i*N ..][0..N].*;
                 m += @reduce(op, x);
                 }
 
             m /= @floatFromInt( C);
-            const v_m : @Vector(N, f32) = @splat(m);
+            const v_m : @Vector(N, LlmFloat) = @splat(m);
             for (0..C/N)|i|{
-                var x:@Vector(N , f32) = input[start + i*N ..][0..N].*;
+                var x:@Vector(N , LlmFloat) = input[start + i*N ..][0..N].*;
                 x -= v_m;
                 v += @reduce(op, x * x);
                 }
@@ -421,14 +421,14 @@ pub fn layernorm_forward_vec(comptime N: usize, output: []LlmFloat, mean: []LlmF
 
             const s = 1.0 / math.sqrt(v + eps);
 
-            const s_vector : @Vector(N, f32) = @splat(s);
+            const s_vector : @Vector(N, LlmFloat) = @splat(s);
             for (0..C/N)|i|{
-                var diff:@Vector(N , f32) = input[start + i*N ..][0..N].*;
+                var diff:@Vector(N , LlmFloat) = input[start + i*N ..][0..N].*;
                 diff -= v_m;
-                var w_vector : @Vector(N, f32) = weight[i*N..][0..N].*;
-                const bias_vector : @Vector(N, f32) = bias[i*N..][0..N].*;
+                var w_vector : @Vector(N, LlmFloat) = weight[i*N..][0..N].*;
+                const bias_vector : @Vector(N, LlmFloat) = bias[i*N..][0..N].*;
                 w_vector *= s_vector;
-                const res: [N]f32 = @mulAdd(@Vector(N, f32),diff, w_vector, bias_vector);
+                const res: [N]LlmFloat = @mulAdd(@Vector(N, LlmFloat),diff, w_vector, bias_vector);
                 @memcpy(output[start + i*N ..start + i*N + N], &res);
                 }
             mean[b * T + t] = m;
@@ -620,7 +620,7 @@ pub fn matmul_backward_vec( comptime N: usize, dinp: []LlmFloat, dweight: []LlmF
                     const v_wrow : @Vector(N, LlmFloat) = weight[o * C + i * N..][0..N].*;
                     const d_t : @Vector(N, LlmFloat) = @splat(dout_bt[o]);
                     const zero : @Vector(N, LlmFloat) = @splat(0);
-                    dinp_bt_v +=  @mulAdd(@Vector(N, f32),v_wrow, d_t,zero);
+                    dinp_bt_v +=  @mulAdd(@Vector(N, LlmFloat),v_wrow, d_t,zero);
                     const tmp:[N]LlmFloat = dinp_bt_v;
                     @memcpy(dinp[b * T * C + t * C + i * N..b * T * C + t * C + (i+1) * N], &tmp);
                     }
@@ -902,7 +902,7 @@ pub fn attention_backward_vec( comptime NChannelsPerHead: usize, dinp: []LlmFloa
                         datt_bth[t2] += res_value_outatt;
 
                         const v_att_bth : VecType = @splat(att_bth[t2]);
-                        const res:[NChannelsPerHead]f32 = v_dvalue_t2 + v_dout_bth * v_att_bth;
+                        const res:[NChannelsPerHead]LlmFloat = v_dvalue_t2 + v_dout_bth * v_att_bth;
                         const start = b*T*C3 + t2*C3 + h*hs + C*2 + i*NChannelsPerHead;
                         const end = b*T*C3 + t2*C3 + h*hs + C*2 + (i+1)*NChannelsPerHead;
                         @memcpy(dinp[start..end], &res);
@@ -927,9 +927,9 @@ pub fn attention_backward_vec( comptime NChannelsPerHead: usize, dinp: []LlmFloa
                         const v_dkey_t2 : VecType = dkey_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
                         const v_dquery_t : VecType = dquery_t[i*NChannelsPerHead..][0..NChannelsPerHead].*;
                         const v_scale_dpreatt : VecType = @splat(dpreatt_bth[t2]*scale);
-                        var res_dquery:[NChannelsPerHead]f32 = v_dquery_t + v_key_t2 * v_scale_dpreatt;
+                        var res_dquery:[NChannelsPerHead]LlmFloat = v_dquery_t + v_key_t2 * v_scale_dpreatt;
                         @memcpy(dquery_t[i*NChannelsPerHead..][0..NChannelsPerHead], &res_dquery);
-                        var res_dkey_t2:[NChannelsPerHead]f32 = v_dkey_t2 + v_query_t * v_scale_dpreatt;
+                        var res_dkey_t2:[NChannelsPerHead]LlmFloat = v_dkey_t2 + v_query_t * v_scale_dpreatt;
                         @memcpy(dkey_t2[i*NChannelsPerHead..][0..NChannelsPerHead], &res_dkey_t2);
                         }
                     }
@@ -969,10 +969,10 @@ pub fn gelu_forward_vec(comptime N:usize, output: []LlmFloat, input: []LlmFloat,
     const one: @Vector(N , LlmFloat) = @splat(1.0);
     const g_coeff: @Vector(N , LlmFloat) = @splat(0.044715);
     for(0..BT4C/N) |i| {
-        const x: @Vector(N , f32) = input[i*N..][0..N].*;
-        const x_cube: @Vector(N , f32) = x * x * x; // x^3
-        const x_par: @Vector(N , f32) =  s * (x + g_coeff * x_cube); // s*(x+0.044715*x^3)
-        const tanh_x: @Vector(N , f32) =(@exp(x_par) - @exp(-x_par))/(@exp(x_par) + @exp(-x_par)) ;
+        const x: @Vector(N , LlmFloat) = input[i*N..][0..N].*;
+        const x_cube: @Vector(N , LlmFloat) = x * x * x; // x^3
+        const x_par: @Vector(N , LlmFloat) =  s * (x + g_coeff * x_cube); // s*(x+0.044715*x^3)
+        const tanh_x: @Vector(N , LlmFloat) =(@exp(x_par) - @exp(-x_par))/(@exp(x_par) + @exp(-x_par)) ;
         const cdf = half * (one + tanh_x);
         const res: [N]LlmFloat = x * cdf;
         @memcpy(output[i*N..(i+1)*N], &res);
@@ -1027,9 +1027,9 @@ fn residual_forward( output:[]LlmFloat, input:[]LlmFloat, residual:[]LlmFloat, N
 /// @param N: Number of elements in each tensor.
 fn residual_forward_vec( comptime N:usize, output:[]LlmFloat, input:[]LlmFloat, residual:[]LlmFloat, BTC:u32) void{
     for(0..BTC/VectorSize) |i| {
-        const inp:@Vector(N , f32) = input[i*N..][0..N].*;
-        const res:@Vector(N , f32) = residual[i*N..][0..N].*;
-        const tmp: [VectorSize]f32  = inp + res;
+        const inp:@Vector(N , LlmFloat) = input[i*N..][0..N].*;
+        const res:@Vector(N , LlmFloat) = residual[i*N..][0..N].*;
+        const tmp: [VectorSize]LlmFloat  = inp + res;
         @memcpy(output[i*VectorSize..(i+1)*VectorSize], &tmp);
         }
     }
