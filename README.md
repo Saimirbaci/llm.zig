@@ -10,7 +10,7 @@ And I personally like the philosophy of Zig and the way it is designed to be dev
 
 ## Quick Start
 
-### Zig setup version 0.11.0
+### Zig setup version 0.12.0
 
 Install zig for your machine following  [Zig](https://ziglang.org/learn/getting-started/)
 

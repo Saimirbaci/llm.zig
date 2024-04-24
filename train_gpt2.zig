@@ -141,7 +141,7 @@ pub fn read_n_parameters_from_file(comptime T:type, file_name: [] const u8, N :u
     var file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only, });
     defer file.close();
 
-    var file_size = try file.getEndPos();
+    const file_size = try file.getEndPos();
     if (file_size < N * @sizeOf(T)) {
         return error.NotEnoughParameters;
         }
@@ -155,7 +155,7 @@ pub fn read_n_parameters_from_file(comptime T:type, file_name: [] const u8, N :u
     var data = try std.ArrayList(T).initCapacity(std.heap.page_allocator, N);
     try std.ArrayList(T).resize(&data, N);
 
-    var bytes = std.mem.sliceAsBytes(data.items);
+    const bytes = std.mem.sliceAsBytes(data.items);
     _ = try file.read(bytes);
     return data;
     }
@@ -169,7 +169,7 @@ pub fn tokenizer_free(allocator: std.mem.Allocator, tokenizer:*Tokenizer) void{
     }
 
 pub fn tokenizer_init(allocator: std.mem.Allocator, tokenizer:*Tokenizer, filename:[] const u8) !void{
-    var model_header: UIntList = try read_n_parameters_from_file(u32,filename, FILE_HEADER_SIZE, 0);
+    const model_header: UIntList = try read_n_parameters_from_file(u32,filename, FILE_HEADER_SIZE, 0);
     if (model_header.items[0] != 20240328){
         return Errors.InvalidModelHeader;
         }
@@ -181,25 +181,25 @@ pub fn tokenizer_init(allocator: std.mem.Allocator, tokenizer:*Tokenizer, filena
     try file.seekTo(FILE_HEADER_SIZE * @sizeOf(u32));
 
     tokenizer.vocab_size = model_header.items[2];
-    var val = try allocator.alloc([]u8, tokenizer.vocab_size);
+    const val = try allocator.alloc([]u8, tokenizer.vocab_size);
     tokenizer.vocab_map = val.ptr;
 
     for(0..tokenizer.vocab_size) |i| {
         var token_length: [1]u8 = undefined;
         //var token_data: [64]u8 = undefined;
-        var read_token_length = try file.read(&token_length);
+        const read_token_length = try file.read(&token_length);
 
         if (@as(u32, @intCast(read_token_length)) == 0){
             return Errors.InvalidTokensFile;
             }
-        var dyn_buffer = try allocator.alloc(u8, @as(u32, @intCast(token_length[0])));
-        var read_token_bytes = try file.read(dyn_buffer);
+        const dyn_buffer = try allocator.alloc(u8, @as(u32, @intCast(token_length[0])));
+        const read_token_bytes = try file.read(dyn_buffer);
         if (@as(u32, @intCast(read_token_bytes)) == 0){
             return Errors.InvalidTokensFile;
             }
         tokenizer.vocab_map[i] = dyn_buffer;
         }
-    var sample_token = tokenizer.vocab_map[50001];
+    const sample_token = tokenizer.vocab_map[50001];
     std.debug.print("sample token: {s}\n", .{sample_token});
     tokenizer.init_ok = true;
     }
@@ -249,11 +249,11 @@ pub fn encoder_forward( output : []LlmFloat, input: []u32, wte: []LlmFloat, wpe:
         for(0..T) |t| {
             var out_bt = output[b * T * C + t * C..];
             // Get the index of the token at inp[b, t]
-            var ix: u32 = input[b * T + t];
+            const ix: u32 = input[b * T + t];
             // Seek to the position in wte corresponding to the token
-            var wte_ix = wte[ix * C..];
+            const wte_ix = wte[ix * C..];
             // Seek to the position in wpe corresponding to the position
-            var wpe_t = wpe[t * C..];
+            const wpe_t = wpe[t * C..];
             for(0..C) |c| {
                 out_bt[c] = wte_ix[c] + wpe_t[c];
                 }
@@ -278,12 +278,12 @@ pub fn encoder_forward_vec( comptime N: usize, output : []LlmFloat, input: []u32
     for(0..B) |b| {
         for(0..T) |t| {
             for(0..C/N) |i| {
-                var ix: u32 = input[b * T + t];
+                const ix: u32 = input[b * T + t];
                 const wte_ix : @Vector(N , f32)  = wte[ix * C + i*N..][0..N].*;
                 const wpe_t : @Vector(N , f32)  = wpe[t * C + i*N..][0..N].*;
                 const res: [N]f32 = wte_ix + wpe_t;
-                var start = b * T * C + t * C + i * N;
-                var end = start + N;
+                const start = b * T * C + t * C + i * N;
+                const end = start + N;
                 @memcpy(output[start..end], &res);
                 }
             }
@@ -302,12 +302,12 @@ pub fn encoder_backward( dwte: []LlmFloat, dwpe: []LlmFloat, dout: []LlmFloat, i
     {
     for (0..B) |b| {
         for (0..T) |t| {
-            var dout_bt = dout[b * T * C + t * C ..];
-            var ix: u32 = inp[b * T + t];
+            const dout_bt = dout[b * T * C + t * C ..];
+            const ix: u32 = inp[b * T + t];
             var dwte_ix = dwte[ix * C ..];
             var dwpe_t = dwpe[t * C ..];
             for (0..C) |c| {
-                var d = dout_bt[c];
+                const d = dout_bt[c];
                 dwte_ix[c] += d;
                 dwpe_t[c] += d;
                 }
@@ -329,11 +329,11 @@ pub fn encoder_backward_vec( comptime N: u32, dwte: []LlmFloat, dwpe: []LlmFloat
     for (0..B) |b| {
         for (0..T) |t| {
             for(0..C/N) |i| {
-                var idx = b * T * C + t * C + i * N;
-                var dout_bt = dout[idx..][0..N].*;
-                var ix: usize = inp[b * T + t];
-                var dwte_ix: @Vector(N , f32) = dwte[ix * C + i * N..][0..N].*;
-                var dwpe_t: @Vector(N , f32) = dwpe[t * C + i * N..][0..N].*;
+                const idx = b * T * C + t * C + i * N;
+                const dout_bt = dout[idx..][0..N].*;
+                const ix: usize = inp[b * T + t];
+                const dwte_ix: @Vector(N , f32) = dwte[ix * C + i * N..][0..N].*;
+                const dwpe_t: @Vector(N , f32) = dwpe[t * C + i * N..][0..N].*;
                 const res_wte: [N]f32 = dout_bt + dwte_ix;
                 const res_wpe: [N]f32 = dout_bt + dwpe_t;
                 @memcpy(dwte[ix * C + i * N..][0..N], &res_wte);
@@ -355,10 +355,10 @@ pub fn encoder_backward_vec( comptime N: u32, dwte: []LlmFloat, dwpe: []LlmFloat
 /// @param C: Number of features (embedding dimension in the context of transformers).
 pub fn layernorm_forward(output: []LlmFloat, mean: []LlmFloat, rstd: []LlmFloat, input: []LlmFloat, weight: []LlmFloat,
                     bias: []LlmFloat,B: u32,T: u32,C: u32) void {
-    var eps: LlmFloat = 1e-5;
+    const eps: LlmFloat = 1e-5;
     for (0..B) |b| {
         for (0..T) |t| {
-            var x = input[b * T * C + t * C ..];
+            const x = input[b * T * C + t * C ..];
             var m: LlmFloat = 0.0;
             for (0..C) |i| {
                 m += x[i];
@@ -367,12 +367,12 @@ pub fn layernorm_forward(output: []LlmFloat, mean: []LlmFloat, rstd: []LlmFloat,
 
             var v: LlmFloat = 0.0;
             for (0..C) |i| {
-                var diff = x[i] - m;
+                const diff = x[i] - m;
                 v += diff * diff;
                 }
             v /= @floatFromInt( C);
 
-            var s = 1.0 / math.sqrt(v + eps);
+            const s = 1.0 / math.sqrt(v + eps);
 
             var out = output[b * T * C + t * C ..];
             for (0..C) |c| {
@@ -397,20 +397,20 @@ pub fn layernorm_forward(output: []LlmFloat, mean: []LlmFloat, rstd: []LlmFloat,
 /// @param C: Number of features (embedding dimension in the context of transformers).
 pub fn layernorm_forward_vec(comptime N: usize, output: []LlmFloat, mean: []LlmFloat, rstd: []LlmFloat, input: []LlmFloat,
                 weight: []LlmFloat, bias: []LlmFloat, B: u32, T: u32, C: u32) void {
-    var eps: LlmFloat = 1e-5;
-    comptime var op :std.builtin.ReduceOp = .Add;
+    const eps: LlmFloat = 1e-5;
+    const op :std.builtin.ReduceOp = .Add;
     for (0..B) |b| {
         for (0..T) |t| {
-            var start:usize = b * T * C + t * C;
+            const start:usize = b * T * C + t * C;
             var m: LlmFloat = 0.0; // mean
             var v: LlmFloat = 0.0; // variance
             for (0..C/N)|i|{
-                var x:@Vector(N , f32) = input[start + i*N ..][0..N].*;
+                const x:@Vector(N , f32) = input[start + i*N ..][0..N].*;
                 m += @reduce(op, x);
                 }
 
             m /= @floatFromInt( C);
-            var v_m : @Vector(N, f32) = @splat(m);
+            const v_m : @Vector(N, f32) = @splat(m);
             for (0..C/N)|i|{
                 var x:@Vector(N , f32) = input[start + i*N ..][0..N].*;
                 x -= v_m;
@@ -419,16 +419,16 @@ pub fn layernorm_forward_vec(comptime N: usize, output: []LlmFloat, mean: []LlmF
 
             v /= @floatFromInt( C);
 
-            var s = 1.0 / math.sqrt(v + eps);
+            const s = 1.0 / math.sqrt(v + eps);
 
-            var s_vector : @Vector(N, f32) = @splat(s);
+            const s_vector : @Vector(N, f32) = @splat(s);
             for (0..C/N)|i|{
                 var diff:@Vector(N , f32) = input[start + i*N ..][0..N].*;
                 diff -= v_m;
                 var w_vector : @Vector(N, f32) = weight[i*N..][0..N].*;
-                var bias_vector : @Vector(N, f32) = bias[i*N..][0..N].*;
+                const bias_vector : @Vector(N, f32) = bias[i*N..][0..N].*;
                 w_vector *= s_vector;
-                var res: [N]f32 = @mulAdd(@Vector(N, f32),diff, w_vector, bias_vector);
+                const res: [N]f32 = @mulAdd(@Vector(N, f32),diff, w_vector, bias_vector);
                 @memcpy(output[start + i*N ..start + i*N + N], &res);
                 }
             mean[b * T + t] = m;
@@ -454,17 +454,17 @@ pub fn layernorm_backward(dinp: []LlmFloat, dweight: []LlmFloat, dbias: []LlmFlo
             []LlmFloat,weight: []LlmFloat,mean: []LlmFloat,rstd: []LlmFloat,B: u32,T: u32,C: u32) void {
     for (0..B) |b| {
         for (0..T) |t| {
-            var dout = doutput[b * T * C + t * C ..];
-            var inp_bt = inp[b * T * C + t * C..];
+            const dout = doutput[b * T * C + t * C ..];
+            const inp_bt = inp[b * T * C + t * C..];
             var dinp_bt = dinp[b * T * C + t * C..];
-            var mean_bt = mean[b * T + t];
-            var rstd_bt = rstd[b * T + t];
+            const mean_bt = mean[b * T + t];
+            const rstd_bt = rstd[b * T + t];
 
             var dnorm_mean:LlmFloat = 0.0;
             var dnorm_norm_mean:LlmFloat = 0.0;
             for (0..C) |c| {
-                var norm_bti = (inp_bt[c] - mean_bt) * rstd_bt;
-                var dnorm_i = weight[c] * dout[c];
+                const norm_bti = (inp_bt[c] - mean_bt) * rstd_bt;
+                const dnorm_i = weight[c] * dout[c];
                 dnorm_mean += dnorm_i;
                 dnorm_norm_mean += dnorm_i * norm_bti;
                 }
@@ -472,8 +472,8 @@ pub fn layernorm_backward(dinp: []LlmFloat, dweight: []LlmFloat, dbias: []LlmFlo
             dnorm_norm_mean /= @floatFromInt(C);
 
             for (0..C) |c| {
-                var norm_bti = (inp_bt[c] - mean_bt) * rstd_bt;
-                var dnorm_i = weight[c] * dout[c];
+                const norm_bti = (inp_bt[c] - mean_bt) * rstd_bt;
+                const dnorm_i = weight[c] * dout[c];
                 dbias[c] += dout[c];
                 dweight[c] += norm_bti * dout[c];
                 var dval = dnorm_i - dnorm_mean - norm_bti * dnorm_norm_mean;
@@ -501,13 +501,13 @@ pub fn matmul_forward( output: []LlmFloat, input: []LlmFloat, weight: []LlmFloat
     for(0..B) |b| {
         for(0..T) |t| {
             var out_bt:[]LlmFloat = output[b * T * OC + t * OC..];
-            var inp_bt:[]LlmFloat = input[b * T * C + t * C..];
+            const inp_bt:[]LlmFloat = input[b * T * C + t * C..];
             for(0..OC) |o| {
                 var val:LlmFloat = 0.0;
                 if(bias.len != 0) {
                     val = bias[o];
                     }
-                var wrow:[]LlmFloat = weight[o * C..];
+                const wrow:[]LlmFloat = weight[o * C..];
                 for(0..C) |i| {
                     val += inp_bt[i] * wrow[i];
                     }
@@ -538,7 +538,7 @@ pub fn matmul_forward_vec( comptime N : usize,output: []LlmFloat,input: []LlmFlo
                     const inp_bt_v : @Vector(N , LlmFloat) = input[b * T * C + t * C + i*N ..][0..N].*;
                     const wrow_v : @Vector(N , LlmFloat) = weight[o * C + i*N ..][0..N].*;
                     const res = @mulAdd(@Vector(N, LlmFloat), wrow_v, inp_bt_v, @splat(0.0));
-                    var final_res = @reduce(.Add, res) ;
+                    const final_res = @reduce(.Add, res) ;
                     out_bt[o] += final_res;
                     }
                 if(bias.len != 0) {
@@ -565,11 +565,11 @@ pub fn matmul_backward( dinp: []LlmFloat, dweight: []LlmFloat, dbias: []LlmFloat
                 weight: []LlmFloat, B: u32, T: u32, C: u32, OC: u32) void{
     for(0..B) |b| {
         for(0..T) |t| {
-            var dout_bt = dout[b * T * OC + t * OC..];
+            const dout_bt = dout[b * T * OC + t * OC..];
             var dinp_bt = dinp[b * T * C + t * C..];
             for(0..OC) |o| {
-                var wrow = weight[o * C..];
-                var d:LlmFloat = dout_bt[o];
+                const wrow = weight[o * C..];
+                const d:LlmFloat = dout_bt[o];
                 for(0..C) |i| {
                     dinp_bt[i] += wrow[i] * d;
                     }
@@ -579,10 +579,10 @@ pub fn matmul_backward( dinp: []LlmFloat, dweight: []LlmFloat, dbias: []LlmFloat
     for(0..OC) |o| {
         for(0..B) |b| {
             for(0..T) |t| {
-                var dout_bt = dout[b * T * OC + t * OC..];
-                var inp_bt = inp[b * T * C + t * C..];
+                const dout_bt = dout[b * T * OC + t * OC..];
+                const inp_bt = inp[b * T * C + t * C..];
                 var dwrow = dweight[o * C..];
-                var d:LlmFloat = dout_bt[o];
+                const d:LlmFloat = dout_bt[o];
                 if(dbias.len != 0) {
                     dbias[o] += d;
                     }
@@ -611,17 +611,17 @@ pub fn matmul_backward_vec( comptime N: usize, dinp: []LlmFloat, dweight: []LlmF
                 inp: []LlmFloat, weight: []LlmFloat, B: u32, T: u32, C: u32, OC: usize) void{
     for(0..B) |b| {
         for(0..T) |t| {
-            var dout_bt = dout[b * T * OC + t * OC..];
+            const dout_bt = dout[b * T * OC + t * OC..];
             var dinp_bt_v : @Vector(N , LlmFloat)  = undefined;
             for(0..OC) |o| {
 
                 for(0..C/N) |i| {
                     dinp_bt_v = dinp[b * T * C + t * C + i * N..][0..N].*;
-                    var v_wrow : @Vector(N, LlmFloat) = weight[o * C + i * N..][0..N].*;
-                    var d_t : @Vector(N, LlmFloat) = @splat(dout_bt[o]);
-                    var zero : @Vector(N, LlmFloat) = @splat(0);
+                    const v_wrow : @Vector(N, LlmFloat) = weight[o * C + i * N..][0..N].*;
+                    const d_t : @Vector(N, LlmFloat) = @splat(dout_bt[o]);
+                    const zero : @Vector(N, LlmFloat) = @splat(0);
                     dinp_bt_v +=  @mulAdd(@Vector(N, f32),v_wrow, d_t,zero);
-                    var tmp:[N]LlmFloat = dinp_bt_v;
+                    const tmp:[N]LlmFloat = dinp_bt_v;
                     @memcpy(dinp[b * T * C + t * C + i * N..b * T * C + t * C + (i+1) * N], &tmp);
                     }
                 }
@@ -630,12 +630,12 @@ pub fn matmul_backward_vec( comptime N: usize, dinp: []LlmFloat, dweight: []LlmF
     for(0..OC) |o| {
         for(0..B) |b| {
             for(0..T) |t| {
-                var dout_bt = dout[b * T * OC + t * OC..];
+                const dout_bt = dout[b * T * OC + t * OC..];
                 for (0..C/N) |i| {
                     var dv_wrow : @Vector(N, LlmFloat) = dweight[o * C + i * N..][0..N].*;
 
-                    var inp_bt_v : @Vector(N , LlmFloat) = inp[b * T * C + t * C + i * N ..][0..N].*;
-                    var d_t : @Vector(N, LlmFloat) = @splat(dout_bt[o]);
+                    const inp_bt_v : @Vector(N , LlmFloat) = inp[b * T * C + t * C + i * N ..][0..N].*;
+                    const d_t : @Vector(N, LlmFloat) = @splat(dout_bt[o]);
 
                     dv_wrow += inp_bt_v * d_t;
                     var tmp:[N]LlmFloat = dv_wrow;
@@ -664,24 +664,24 @@ pub fn matmul_backward_vec( comptime N: usize, dinp: []LlmFloat, dweight: []LlmF
 pub fn attention_forward( output : []LlmFloat, preatt: []LlmFloat, att: []LlmFloat, inp: []LlmFloat, B: u32, T: u32,
         C: u32, NH: u32
 ) void{
-    var C3:u32 = C*3;
-    var hs:u32 = C / NH; // head size
-    var hs_float:LlmFloat = @floatFromInt(hs);
-    var scale:LlmFloat = 1.0 / math.sqrt(hs_float);
+    const C3:u32 = C*3;
+    const hs:u32 = C / NH; // head size
+    const hs_float:LlmFloat = @floatFromInt(hs);
+    const scale:LlmFloat = 1.0 / math.sqrt(hs_float);
 
     for(0..B) |b| {
         for(0..T) |t| {
             for(0..NH) |h| {
-                var query_t = inp[b * T * C3 + t * C3 + h * hs..];
+                const query_t = inp[b * T * C3 + t * C3 + h * hs..];
                 var preatt_bth = preatt[b * NH * T * T + h * T * T + t * T..];
                 var att_bth = att[b * NH * T * T + h * T * T + t * T..];
                 var maxval = -math.floatMin(LlmFloat);
                 for(0..t+1) |t2| {
-                    var key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
+                    const key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
                     var val:LlmFloat = 0.0;
                     for(0..hs) |i| {
-                        var q:LlmFloat = query_t[i];
-                        var k:LlmFloat = key_t2[i];
+                        const q:LlmFloat = query_t[i];
+                        const k:LlmFloat = key_t2[i];
                         val += k * q;
                         }
                     val *= scale;
@@ -692,7 +692,7 @@ pub fn attention_forward( output : []LlmFloat, preatt: []LlmFloat, att: []LlmFlo
                     }
                 var expsum:LlmFloat = 0.0;
                 for(0..t+1) |t2| {
-                    var expv:LlmFloat = math.exp(preatt_bth[t2] - maxval);
+                    const expv:LlmFloat = math.exp(preatt_bth[t2] - maxval);
                     expsum += expv;
                     att_bth[t2] = expv;
                     }
@@ -712,8 +712,8 @@ pub fn attention_forward( output : []LlmFloat, preatt: []LlmFloat, att: []LlmFlo
                     out_bth[i] = 0.0;
                     }
                 for(0..t+1) |t2| {
-                    var value_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C * 2..];
-                    var att_btht2:LlmFloat = att_bth[t2];
+                    const value_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C * 2..];
+                    const att_btht2:LlmFloat = att_bth[t2];
                     for(0..hs) |i| {
                         out_bth[i] += att_btht2 * value_t2[i];
                         }
@@ -738,24 +738,24 @@ pub fn attention_forward( output : []LlmFloat, preatt: []LlmFloat, att: []LlmFlo
 pub fn attention_forward_vec( comptime N: usize, output : []LlmFloat, preatt: []LlmFloat, att: []LlmFloat, inp: []LlmFloat,
             B: usize, T: usize, C: usize, NH: usize
 ) void{
-    var C3:usize = C*3;
-    var hs:usize = C / NH; // head size
-    var hs_float:LlmFloat = @floatFromInt(hs);
-    var scale:LlmFloat = 1.0 / math.sqrt(hs_float);
+    const C3:usize = C*3;
+    const hs:usize = C / NH; // head size
+    const hs_float:LlmFloat = @floatFromInt(hs);
+    const scale:LlmFloat = 1.0 / math.sqrt(hs_float);
     const add_op : std.builtin.ReduceOp = std.builtin.ReduceOp.Add;
     for(0..B) |b| {
         for(0..T) |t| {
             for(0..NH) |h| {
-                var query_t = inp[b * T * C3 + t * C3 + h * hs..];
+                const query_t = inp[b * T * C3 + t * C3 + h * hs..];
                 var preatt_bth = preatt[b * NH * T * T + h * T * T + t * T..];
                 var att_bth = att[b * NH * T * T + h * T * T + t * T..];
                 var maxval = -math.floatMin(LlmFloat);
                 for(0..t+1) |t2| {
-                    var key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
+                    const key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
                     var val:LlmFloat = 0.0;
                     for(0..hs/N) |i| {
-                        var q:@Vector(N,LlmFloat) = query_t[i*N..][0..N].*;
-                        var k:@Vector(N,LlmFloat)  = key_t2[i*N..][0..N].*;
+                        const q:@Vector(N,LlmFloat) = query_t[i*N..][0..N].*;
+                        const k:@Vector(N,LlmFloat)  = key_t2[i*N..][0..N].*;
                         val +=@reduce(add_op,q*k);
                         }
                     val *= scale;
@@ -766,7 +766,7 @@ pub fn attention_forward_vec( comptime N: usize, output : []LlmFloat, preatt: []
                     }
                 var expsum:LlmFloat = 0.0;
                 for(0..t+1) |t2| {
-                    var expv:LlmFloat = math.exp(preatt_bth[t2] - maxval);
+                    const expv:LlmFloat = math.exp(preatt_bth[t2] - maxval);
                     expsum += expv;
                     att_bth[t2] = expv;
                     }
@@ -786,11 +786,11 @@ pub fn attention_forward_vec( comptime N: usize, output : []LlmFloat, preatt: []
                     out_bth[i] = 0.0;
                     }
                 for(0..t+1) |t2| {
-                    var att_btht2:@Vector(N,LlmFloat) = @splat(att_bth[t2]);
+                    const att_btht2:@Vector(N,LlmFloat) = @splat(att_bth[t2]);
                     for(0..hs/N) |i| {
-                        var value_t2:@Vector(N,LlmFloat) = inp[b * T * C3 + t2 * C3 + h * hs + C * 2 + i*N..][0..N].*;
-                        var out_bth_v:@Vector(N,LlmFloat) = out_bth[i*N..][0..N].*;
-                        var res:[N]LlmFloat = @mulAdd(@Vector(N,LlmFloat), att_btht2, value_t2, out_bth_v);
+                        const value_t2:@Vector(N,LlmFloat) = inp[b * T * C3 + t2 * C3 + h * hs + C * 2 + i*N..][0..N].*;
+                        const out_bth_v:@Vector(N,LlmFloat) = out_bth[i*N..][0..N].*;
+                        const res:[N]LlmFloat = @mulAdd(@Vector(N,LlmFloat), att_btht2, value_t2, out_bth_v);
                         @memcpy(out_bth[i*N..][0..N], &res);
                         }
                     }
@@ -814,22 +814,22 @@ pub fn attention_forward_vec( comptime N: usize, output : []LlmFloat, preatt: []
 /// @param NH: Number of attention heads.
 pub fn attention_backward( dinp: []LlmFloat, dpreatt: []LlmFloat, datt: []LlmFloat, dout: []LlmFloat, inp: []LlmFloat,
             att: []LlmFloat, B: u32, T: u32, C: u32, NH: u32) void{
-    var C3:u32 = C * 3;
-    var hs:u32 = @intCast(C / NH);
-    var hs_float:LlmFloat = @floatFromInt(hs);
-    var scale:LlmFloat = 1.0 / math.sqrt(hs_float);
+    const C3:u32 = C * 3;
+    const hs:u32 = @intCast(C / NH);
+    const hs_float:LlmFloat = @floatFromInt(hs);
+    const scale:LlmFloat = 1.0 / math.sqrt(hs_float);
     for(0..B)|b|{
         for(0..T)|t|{
             for(0..NH)|h|{
-                var att_bth    = att[b*NH*T*T + h*T*T + t*T..];
+                const att_bth    = att[b*NH*T*T + h*T*T + t*T..];
                 var datt_bth   = datt[b*NH*T*T + h*T*T + t*T..];
                 var dpreatt_bth = dpreatt[b*NH*T*T + h*T*T + t*T..];
                 var dquery_t   = dinp[b*T*C3 + t*C3 + h*hs..];
-                var query_t    = inp[b*T*C3 + t*C3 + h*hs..];
+                const query_t    = inp[b*T*C3 + t*C3 + h*hs..];
                 // backward pass 4, through the value accumulation
-                var dout_bth = dout[b * T * C + t * C + h * hs..];
+                const dout_bth = dout[b * T * C + t * C + h * hs..];
                 for(0..t+1)|t2|{
-                    var value_t2 = inp[b*T*C3 + t2*C3 + h*hs + C*2..];
+                    const value_t2 = inp[b*T*C3 + t2*C3 + h*hs + C*2..];
                     var dvalue_t2 = dinp[b*T*C3 + t2*C3 + h*hs + C*2..];
                     for(0..hs)|i|{
                         datt_bth[t2] += value_t2[i] * dout_bth[i];
@@ -842,12 +842,12 @@ pub fn attention_backward( dinp: []LlmFloat, dpreatt: []LlmFloat, datt: []LlmFlo
                         if(t3 == t2){
                             indicator = 1.0;
                             }
-                        var local_derivative:LlmFloat = att_bth[t2] * (indicator - att_bth[t3]);
+                        const local_derivative:LlmFloat = att_bth[t2] * (indicator - att_bth[t3]);
                         dpreatt_bth[t3] += local_derivative * datt_bth[t2];
                         }
                     }
                 for(0..t+1)|t2|{
-                    var key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
+                    const key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
                     var dkey_t2 = dinp[b * T * C3 + t2 * C3 + h * hs + C..];
                     for(0..hs)|i|{
                         dquery_t[i] += key_t2[i] * dpreatt_bth[t2]*scale;
@@ -875,36 +875,36 @@ pub fn attention_backward( dinp: []LlmFloat, dpreatt: []LlmFloat, datt: []LlmFlo
 /// @param NH: Number of attention heads.
 pub fn attention_backward_vec( comptime NChannelsPerHead: usize, dinp: []LlmFloat, dpreatt: []LlmFloat, datt: []LlmFloat,
                         dout: []LlmFloat, inp: []LlmFloat, att: []LlmFloat, B: u32, T: u32, C: u32, NH: u32) void{
-    var C3:u32 = C * 3;
-    var hs:u32 = @intCast(C / NH);
-    var hs_float:LlmFloat = @floatFromInt(hs);
-    var scale:LlmFloat = 1.0 / math.sqrt(hs_float);
+    const C3:u32 = C * 3;
+    const hs:u32 = @intCast(C / NH);
+    const hs_float:LlmFloat = @floatFromInt(hs);
+    const scale:LlmFloat = 1.0 / math.sqrt(hs_float);
     for(0..B)|b|{
         for(0..T)|t|{
             for(0..NH)|h|{
-                var att_bth    = att[b*NH*T*T + h*T*T + t*T..];
+                const att_bth    = att[b*NH*T*T + h*T*T + t*T..];
                 var datt_bth   = datt[b*NH*T*T + h*T*T + t*T..];
                 var dpreatt_bth = dpreatt[b*NH*T*T + h*T*T + t*T..];
                 var dquery_t   = dinp[b*T*C3 + t*C3 + h*hs..];
-                var query_t    = inp[b*T*C3 + t*C3 + h*hs..];
+                const query_t    = inp[b*T*C3 + t*C3 + h*hs..];
                 // backward pass 4, through the value accumulation
-                var dout_bth = dout[b * T * C + t * C + h * hs..];
+                const dout_bth = dout[b * T * C + t * C + h * hs..];
                 for(0..t+1)|t2|{
                     var value_t2 = inp[b*T*C3 + t2*C3 + h*hs + C*2..];
                     var dvalue_t2 = dinp[b*T*C3 + t2*C3 + h*hs + C*2..];
-                    comptime var op_add :std.builtin.ReduceOp = .Add;
+                    const op_add :std.builtin.ReduceOp = .Add;
 
                     for (0..hs/NChannelsPerHead)|i|{
-                        var v_dout_bth : VecType = dout_bth[i*NChannelsPerHead..][0..NChannelsPerHead].*;
-                        var v_value_t2 : VecType = value_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
-                        var v_dvalue_t2 : VecType = dvalue_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
-                        var res_value_outatt = @reduce(op_add,v_value_t2 * v_dout_bth);
+                        const v_dout_bth : VecType = dout_bth[i*NChannelsPerHead..][0..NChannelsPerHead].*;
+                        const v_value_t2 : VecType = value_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
+                        const v_dvalue_t2 : VecType = dvalue_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
+                        const res_value_outatt = @reduce(op_add,v_value_t2 * v_dout_bth);
                         datt_bth[t2] += res_value_outatt;
 
                         const v_att_bth : VecType = @splat(att_bth[t2]);
-                        var res:[NChannelsPerHead]f32 = v_dvalue_t2 + v_dout_bth * v_att_bth;
-                        var start = b*T*C3 + t2*C3 + h*hs + C*2 + i*NChannelsPerHead;
-                        var end = b*T*C3 + t2*C3 + h*hs + C*2 + (i+1)*NChannelsPerHead;
+                        const res:[NChannelsPerHead]f32 = v_dvalue_t2 + v_dout_bth * v_att_bth;
+                        const start = b*T*C3 + t2*C3 + h*hs + C*2 + i*NChannelsPerHead;
+                        const end = b*T*C3 + t2*C3 + h*hs + C*2 + (i+1)*NChannelsPerHead;
                         @memcpy(dinp[start..end], &res);
                         }
                     }
@@ -914,19 +914,19 @@ pub fn attention_backward_vec( comptime NChannelsPerHead: usize, dinp: []LlmFloa
                         if(t3 == t2){
                             indicator = 1.0;
                             }
-                        var local_derivative:LlmFloat = att_bth[t2] * (indicator - att_bth[t3]);
+                        const local_derivative:LlmFloat = att_bth[t2] * (indicator - att_bth[t3]);
                         dpreatt_bth[t3] += local_derivative * datt_bth[t2];
                         }
                     }
                 for(0..t+1)|t2|{
-                    var key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
+                    const key_t2 = inp[b * T * C3 + t2 * C3 + h * hs + C..];
                     var dkey_t2 = dinp[b * T * C3 + t2 * C3 + h * hs + C..];
                     for (0..hs/NChannelsPerHead)|i|{
-                        var v_query_t : VecType = query_t[i*NChannelsPerHead..][0..NChannelsPerHead].*;
-                        var v_key_t2 : VecType = key_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
-                        var v_dkey_t2 : VecType = dkey_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
-                        var v_dquery_t : VecType = dquery_t[i*NChannelsPerHead..][0..NChannelsPerHead].*;
-                        var v_scale_dpreatt : VecType = @splat(dpreatt_bth[t2]*scale);
+                        const v_query_t : VecType = query_t[i*NChannelsPerHead..][0..NChannelsPerHead].*;
+                        const v_key_t2 : VecType = key_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
+                        const v_dkey_t2 : VecType = dkey_t2[i*NChannelsPerHead..][0..NChannelsPerHead].*;
+                        const v_dquery_t : VecType = dquery_t[i*NChannelsPerHead..][0..NChannelsPerHead].*;
+                        const v_scale_dpreatt : VecType = @splat(dpreatt_bth[t2]*scale);
                         var res_dquery:[NChannelsPerHead]f32 = v_dquery_t + v_key_t2 * v_scale_dpreatt;
                         @memcpy(dquery_t[i*NChannelsPerHead..][0..NChannelsPerHead], &res_dquery);
                         var res_dkey_t2:[NChannelsPerHead]f32 = v_dkey_t2 + v_query_t * v_scale_dpreatt;
@@ -946,10 +946,10 @@ pub fn attention_backward_vec( comptime NChannelsPerHead: usize, dinp: []LlmFloa
 /// @param input: The input array on which the GELU function is applied.
 /// @param N: The number of elements in the input and output arrays.
 pub fn gelu_forward( output: []LlmFloat, input: []LlmFloat, N: u32) void {
-    comptime var s = math.sqrt(2.0 / math.pi);
+    const s = math.sqrt(2.0 / math.pi);
     for (0..N) |i| {
-        var x = input[i];
-        var cdf = 0.5 * (1.0 + math.tanh(s * (x + 0.044715 * math.pow(LlmFloat,x, 3))));
+        const x = input[i];
+        const cdf = 0.5 * (1.0 + math.tanh(s * (x + 0.044715 * math.pow(LlmFloat,x, 3))));
         output[i] = x * cdf;
         }
     }
@@ -964,17 +964,17 @@ pub fn gelu_forward( output: []LlmFloat, input: []LlmFloat, N: u32) void {
 /// @param N: The number of elements in the input and output arrays.
 //ToDo Fix issue with tanh producing NaN in the following implementation. Zig does not have an operator for tanh operating in vector mode.
 pub fn gelu_forward_vec(comptime N:usize, output: []LlmFloat, input: []LlmFloat, BT4C: usize) void {
-    var s:@Vector(N , LlmFloat) = @splat(math.sqrt(2.0 / math.pi));
-    var half:@Vector(N , LlmFloat) = @splat(0.5);
-    var one: @Vector(N , LlmFloat) = @splat(1.0);
-    var g_coeff: @Vector(N , LlmFloat) = @splat(0.044715);
+    const s:@Vector(N , LlmFloat) = @splat(math.sqrt(2.0 / math.pi));
+    const half:@Vector(N , LlmFloat) = @splat(0.5);
+    const one: @Vector(N , LlmFloat) = @splat(1.0);
+    const g_coeff: @Vector(N , LlmFloat) = @splat(0.044715);
     for(0..BT4C/N) |i| {
-        var x: @Vector(N , f32) = input[i*N..][0..N].*;
-        var x_cube: @Vector(N , f32) = x * x * x; // x^3
-        var x_par: @Vector(N , f32) =  s * (x + g_coeff * x_cube); // s*(x+0.044715*x^3)
-        var tanh_x: @Vector(N , f32) =(@exp(x_par) - @exp(-x_par))/(@exp(x_par) + @exp(-x_par)) ;
-        var cdf = half * (one + tanh_x);
-        var res: [N]LlmFloat = x * cdf;
+        const x: @Vector(N , f32) = input[i*N..][0..N].*;
+        const x_cube: @Vector(N , f32) = x * x * x; // x^3
+        const x_par: @Vector(N , f32) =  s * (x + g_coeff * x_cube); // s*(x+0.044715*x^3)
+        const tanh_x: @Vector(N , f32) =(@exp(x_par) - @exp(-x_par))/(@exp(x_par) + @exp(-x_par)) ;
+        const cdf = half * (one + tanh_x);
+        const res: [N]LlmFloat = x * cdf;
         @memcpy(output[i*N..(i+1)*N], &res);
         }
     }
@@ -989,16 +989,16 @@ pub fn gelu_forward_vec(comptime N:usize, output: []LlmFloat, input: []LlmFloat,
 /// @param N: The number of elements in the input and output gradient arrays.
 pub fn gelu_backward( dinput: []LlmFloat, input: []LlmFloat, doutput: []LlmFloat, N: u32)
 void {
-    comptime var s = math.sqrt(2.0 / math.pi);
+    const s = math.sqrt(2.0 / math.pi);
     for (0..N) |i| {
-        var x = input[i];
-        var square = x * x * 0.044715;
-        var cube = square * x;
-        var tanh_arg = s * (x + cube);
-        var tanh_out = math.tanh(tanh_arg);
-        var coshf_out = math.cosh(tanh_arg);
-        var sech2 = 1.0 / (coshf_out * coshf_out);
-        var local_grad = 0.5 * (1.0 + tanh_out) + x * 0.5 * sech2 * s * (1.0 + 3.0 * square);
+        const x = input[i];
+        const square = x * x * 0.044715;
+        const cube = square * x;
+        const tanh_arg = s * (x + cube);
+        const tanh_out = math.tanh(tanh_arg);
+        const coshf_out = math.cosh(tanh_arg);
+        const sech2 = 1.0 / (coshf_out * coshf_out);
+        const local_grad = 0.5 * (1.0 + tanh_out) + x * 0.5 * sech2 * s * (1.0 + 3.0 * square);
         dinput[i] += local_grad * doutput[i];
         }
     }
@@ -1027,9 +1027,9 @@ fn residual_forward( output:[]LlmFloat, input:[]LlmFloat, residual:[]LlmFloat, N
 /// @param N: Number of elements in each tensor.
 fn residual_forward_vec( comptime N:usize, output:[]LlmFloat, input:[]LlmFloat, residual:[]LlmFloat, BTC:u32) void{
     for(0..BTC/VectorSize) |i| {
-        var inp:@Vector(N , f32) = input[i*N..][0..N].*;
-        var res:@Vector(N , f32) = residual[i*N..][0..N].*;
-        var tmp: [VectorSize]f32  = inp + res;
+        const inp:@Vector(N , f32) = input[i*N..][0..N].*;
+        const res:@Vector(N , f32) = residual[i*N..][0..N].*;
+        const tmp: [VectorSize]f32  = inp + res;
         @memcpy(output[i*VectorSize..(i+1)*VectorSize], &tmp);
         }
     }
@@ -1062,7 +1062,7 @@ fn softmax_forward( probs:[]LlmFloat, logits:[]LlmFloat, B:u32, T:u32, V:u32) vo
     {
     for(0..B) |b| {
         for(0..T) |t| {
-            var logit_bt = logits[b * T * V + t * V..];
+            const logit_bt = logits[b * T * V + t * V..];
             var prob_bt = probs[b * T * V + t * V..];
             var maxval = -math.floatMax(LlmFloat);
             for(0..V) |v| {
@@ -1072,7 +1072,7 @@ fn softmax_forward( probs:[]LlmFloat, logits:[]LlmFloat, B:u32, T:u32, V:u32) vo
                 }
             var expsum:LlmFloat = 0.0;
             for(0..V) |v| {
-                var expv:LlmFloat = math.exp(logit_bt[v] - maxval);
+                const expv:LlmFloat = math.exp(logit_bt[v] - maxval);
                 expsum += expv;
                 prob_bt[v] = expv;
                 }
@@ -1098,8 +1098,8 @@ fn crossentropy_forward( losses: []LlmFloat, probs: []LlmFloat, targets: []u32, 
     {
     for (0..B) |b| {
         for (0..T) |t| {
-            var prob_bt = probs[b * T * V + t * V ..];
-            var target_bt = targets[b * T + t];
+            const prob_bt = probs[b * T * V + t * V ..];
+            const target_bt = targets[b * T + t];
             losses[b * T + t] = -@log(@max(prob_bt[target_bt], 1e-10)); // Avoid log(0)
             }
         }
@@ -1121,11 +1121,11 @@ fn crossentropy_softmax_backward( dlogits: []LlmFloat, dlosses: []LlmFloat, prob
     for (0..B) |b| {
         for (0..T) |t| {
             var dlogits_bt = dlogits[b * T * V + t * V ..];
-            var prob_bt = probs[b * T * V + t * V ..];
-            var ix = targets[b * T + t];
-            var dloss = dlosses[b * T + t];
+            const prob_bt = probs[b * T * V + t * V ..];
+            const ix = targets[b * T + t];
+            const dloss = dlosses[b * T + t];
             for (0..V) |v| {
-                var p = prob_bt[v];
+                const p = prob_bt[v];
                 var indicator: LlmFloat = 0.0;
                 if (v == ix) {
                     indicator = 1.0;
@@ -1160,8 +1160,8 @@ pub fn printHead(model: GPT2) void {
 /// invalid model header or version, or file reading issues.
 fn  gpt2_build_from_checkpoint(model: *GPT2, checkpoint_path: []const u8) !void{
 
-    var model_header:UIntList = try read_n_parameters_from_file(u32, checkpoint_path, 256, 0);
-    var config = GPT2Config{
+    const model_header:UIntList = try read_n_parameters_from_file(u32, checkpoint_path, 256, 0);
+    const config = GPT2Config{
         .model_header = model_header.items[0],
         .model_version = model_header.items[1],
         .max_seq_len = model_header.items[2],
@@ -1203,7 +1203,7 @@ fn  gpt2_build_from_checkpoint(model: *GPT2, checkpoint_path: []const u8) !void{
         }
     std.debug.print("num_parameters: {}\n", .{model.num_parameters});
 
-    var params_memory: FloatList = try read_n_parameters_from_file(LlmFloat, checkpoint_path, model.num_parameters, 256);
+    const params_memory: FloatList = try read_n_parameters_from_file(LlmFloat, checkpoint_path, model.num_parameters, 256);
     model.params_memory = params_memory.items;
     var iter: u32 = 0;
     model.params.wte = model.params_memory[iter..iter+model.params_sizes[0]];
@@ -1267,10 +1267,10 @@ fn  gpt2_build_from_checkpoint(model: *GPT2, checkpoint_path: []const u8) !void{
 
 fn gpt2_forward(allocator: std.mem.Allocator, model:*GPT2, inputs:[]u32, targets:[]u32, B:u32, T:u32) !void{
 
-    var V = model.config.vocab_size;
-    var C = model.config.channels;
-    var NH = model.config.num_heads;
-    var L = model.config.num_layers;
+    const V = model.config.vocab_size;
+    const C = model.config.channels;
+    const NH = model.config.num_heads;
+    const L = model.config.num_layers;
 
     if (!model.init_params) {
         model.init_params = true;
@@ -1393,34 +1393,34 @@ fn gpt2_forward(allocator: std.mem.Allocator, model:*GPT2, inputs:[]u32, targets
         else{
             residual = model.acts.residual3[(l-1) * B * T * C..];
             }
-        var l_ln1w = model.params.ln1w[l * C..];
-        var l_ln1b = model.params.ln1b[l * C..];
-        var l_qkvw = model.params.qkvw[l * 3 * C * C..];
-        var l_qkvb = model.params.qkvb[l * 3 * C..];
-        var l_attprojw = model.params.attprojw[l * C * C..];
-        var l_attprojb = model.params.attprojb[l * C..];
-        var l_ln2w = model.params.ln2w[l * C..];
-        var l_ln2b = model.params.ln2b[l * C..];
-        var l_fcw = model.params.fcw[l * 4 * C * C..];
-        var l_fcb = model.params.fcb[l * 4 * C..];
-        var l_fcprojw = model.params.fcprojw[l * C * 4 * C..];
-        var l_fcprojb = model.params.fcprojb[l * C..];
-        var l_ln1 = model.acts.ln1[l * B * T * C..];
-        var l_ln1_mean = model.acts.ln1_mean[l * B * T..];
-        var l_ln1_rstd = model.acts.ln1_rstd[l * B * T..];
-        var l_qkv = model.acts.qkv[l * B * T * 3 * C..];
-        var l_atty = model.acts.atty[l * B * T * C..];
-        var l_preatt = model.acts.preatt[l * B * NH * T * T..];
-        var l_att = model.acts.att[l * B * NH * T * T..];
-        var l_attproj = model.acts.attproj[l * B * T * C..];
-        var l_residual2 = model.acts.residual2[l * B * T * C..];
-        var l_ln2 = model.acts.ln2[l * B * T * C..];
-        var l_ln2_mean = model.acts.ln2_mean[l * B * T..];
-        var l_ln2_rstd = model.acts.ln2_rstd[l * B * T..];
-        var l_fch = model.acts.fch[l * B * T * 4 * C..];
-        var l_fch_gelu = model.acts.fch_gelu[l * B * T * 4 * C..];
-        var l_fcproj = model.acts.fcproj[l * B * T * C..];
-        var l_residual3 = model.acts.residual3[l * B * T * C..];
+        const l_ln1w = model.params.ln1w[l * C..];
+        const l_ln1b = model.params.ln1b[l * C..];
+        const l_qkvw = model.params.qkvw[l * 3 * C * C..];
+        const l_qkvb = model.params.qkvb[l * 3 * C..];
+        const l_attprojw = model.params.attprojw[l * C * C..];
+        const l_attprojb = model.params.attprojb[l * C..];
+        const l_ln2w = model.params.ln2w[l * C..];
+        const l_ln2b = model.params.ln2b[l * C..];
+        const l_fcw = model.params.fcw[l * 4 * C * C..];
+        const l_fcb = model.params.fcb[l * 4 * C..];
+        const l_fcprojw = model.params.fcprojw[l * C * 4 * C..];
+        const l_fcprojb = model.params.fcprojb[l * C..];
+        const l_ln1 = model.acts.ln1[l * B * T * C..];
+        const l_ln1_mean = model.acts.ln1_mean[l * B * T..];
+        const l_ln1_rstd = model.acts.ln1_rstd[l * B * T..];
+        const l_qkv = model.acts.qkv[l * B * T * 3 * C..];
+        const l_atty = model.acts.atty[l * B * T * C..];
+        const l_preatt = model.acts.preatt[l * B * NH * T * T..];
+        const l_att = model.acts.att[l * B * NH * T * T..];
+        const l_attproj = model.acts.attproj[l * B * T * C..];
+        const l_residual2 = model.acts.residual2[l * B * T * C..];
+        const l_ln2 = model.acts.ln2[l * B * T * C..];
+        const l_ln2_mean = model.acts.ln2_mean[l * B * T..];
+        const l_ln2_rstd = model.acts.ln2_rstd[l * B * T..];
+        const l_fch = model.acts.fch[l * B * T * 4 * C..];
+        const l_fch_gelu = model.acts.fch_gelu[l * B * T * 4 * C..];
+        const l_fcproj = model.acts.fcproj[l * B * T * C..];
+        const l_residual3 = model.acts.residual3[l * B * T * C..];
         // ToDo implement a generic wat to handle also when C is not a multiple of VectorChannels
         if( (C%VectorSize == 0) and (C>VectorSize) ){
             layernorm_forward_vec(VectorSize,l_ln1, l_ln1_mean, l_ln1_rstd, residual, l_ln1w, l_ln1b, B, T, C);
@@ -1474,7 +1474,7 @@ fn gpt2_forward(allocator: std.mem.Allocator, model:*GPT2, inputs:[]u32, targets
                 mean_loss += model.acts.losses[b * T + t];
                 }
             }
-        var batch_t : LlmFloat = @floatFromInt(B * T);
+        const batch_t : LlmFloat = @floatFromInt(B * T);
         mean_loss = mean_loss / batch_t;
         model.mean_loss = mean_loss;
         }
@@ -1625,16 +1625,16 @@ fn gpt2_backward(allocator: std.mem.Allocator, model :*GPT2) !void{
         gpt2_zero_grad(model);
         }
     // Short cuts
-    var B:u32 = model.batch_size;
-    var T:u32 = model.seq_len;
-    var V:u32 = model.config.vocab_size;
-    var C:u32 = model.config.channels;
-    var NH:u32 = model.config.num_heads;
-    var L:u32 = model.config.num_layers;
+    const B:u32 = model.batch_size;
+    const T:u32 = model.seq_len;
+    const V:u32 = model.config.vocab_size;
+    const C:u32 = model.config.channels;
+    const NH:u32 = model.config.num_heads;
+    const L:u32 = model.config.num_layers;
     var dbiases: []LlmFloat = undefined;
     dbiases.len = 0;
 
-    var dloss_mean: LlmFloat = 1.0 / @as(LlmFloat, @floatFromInt((B * T)));
+    const dloss_mean: LlmFloat = 1.0 / @as(LlmFloat, @floatFromInt((B * T)));
     for(0..B) |b| {
         for(0..T) |t| {
             model.grads_acts.losses[b * T + t] = dloss_mean;
@@ -1681,51 +1681,51 @@ fn gpt2_backward(allocator: std.mem.Allocator, model :*GPT2) !void{
             residual = model.acts.residual3[(l-1) * B * T * C..];
             dresidual = model.grads_acts.residual3[(l-1) * B * T * C..];
             }
-        var l_ln1w = model.params.ln1w[l * C..];
-        var l_qkvw = model.params.qkvw[l * 3 * C * C..];
-        var l_attprojw = model.params.attprojw[l * C * C..];
-        var l_ln2w = model.params.ln2w[l * C..];
-        var l_fcw = model.params.fcw[l * 4 * C * C..];
-        var l_fcprojw = model.params.fcprojw[l * C * 4 * C..];
+        const l_ln1w = model.params.ln1w[l * C..];
+        const l_qkvw = model.params.qkvw[l * 3 * C * C..];
+        const l_attprojw = model.params.attprojw[l * C * C..];
+        const l_ln2w = model.params.ln2w[l * C..];
+        const l_fcw = model.params.fcw[l * 4 * C * C..];
+        const l_fcprojw = model.params.fcprojw[l * C * 4 * C..];
         // get the slices for the gradients of the weights for this layer
-        var dl_ln1w = model.grads.ln1w[l * C..];
-        var dl_ln1b = model.grads.ln1b[l * C..];
-        var dl_qkvw = model.grads.qkvw[l * 3 * C * C..];
-        var dl_qkvb = model.grads.qkvb[l * 3 * C..];
-        var dl_attprojw = model.grads.attprojw[l * C * C..];
-        var dl_attprojb = model.grads.attprojb[l * C..];
-        var dl_ln2w = model.grads.ln2w[l * C..];
-        var dl_ln2b = model.grads.ln2b[l * C..];
-        var dl_fcw = model.grads.fcw[l * 4 * C * C..];
-        var dl_fcb = model.grads.fcb[l * 4 * C..];
-        var dl_fcprojw = model.grads.fcprojw[l * C * 4 * C..];
-        var dl_fcprojb = model.grads.fcprojb[l * C..];
+        const dl_ln1w = model.grads.ln1w[l * C..];
+        const dl_ln1b = model.grads.ln1b[l * C..];
+        const dl_qkvw = model.grads.qkvw[l * 3 * C * C..];
+        const dl_qkvb = model.grads.qkvb[l * 3 * C..];
+        const dl_attprojw = model.grads.attprojw[l * C * C..];
+        const dl_attprojb = model.grads.attprojb[l * C..];
+        const dl_ln2w = model.grads.ln2w[l * C..];
+        const dl_ln2b = model.grads.ln2b[l * C..];
+        const dl_fcw = model.grads.fcw[l * 4 * C * C..];
+        const dl_fcb = model.grads.fcb[l * 4 * C..];
+        const dl_fcprojw = model.grads.fcprojw[l * C * 4 * C..];
+        const dl_fcprojb = model.grads.fcprojb[l * C..];
         // get the slices for the activations for this layer
-        var l_ln1 = model.acts.ln1[l * B * T * C..];
-        var l_ln1_mean = model.acts.ln1_mean[l * B * T..];
-        var l_ln1_rstd = model.acts.ln1_rstd[l * B * T..];
-        var l_qkv = model.acts.qkv[l * B * T * 3 * C..];
-        var l_atty = model.acts.atty[l * B * T * C..];
-        var l_att = model.acts.att[l * B * NH * T * T..];
-        var l_residual2 = model.acts.residual2[l * B * T * C..];
-        var l_ln2 = model.acts.ln2[l * B * T * C..];
-        var l_ln2_mean = model.acts.ln2_mean[l * B * T..];
-        var l_ln2_rstd = model.acts.ln2_rstd[l * B * T..];
-        var l_fch = model.acts.fch[l * B * T * 4 * C..];
-        var l_fch_gelu = model.acts.fch_gelu[l * B * T * 4 * C..];
+        const l_ln1 = model.acts.ln1[l * B * T * C..];
+        const l_ln1_mean = model.acts.ln1_mean[l * B * T..];
+        const l_ln1_rstd = model.acts.ln1_rstd[l * B * T..];
+        const l_qkv = model.acts.qkv[l * B * T * 3 * C..];
+        const l_atty = model.acts.atty[l * B * T * C..];
+        const l_att = model.acts.att[l * B * NH * T * T..];
+        const l_residual2 = model.acts.residual2[l * B * T * C..];
+        const l_ln2 = model.acts.ln2[l * B * T * C..];
+        const l_ln2_mean = model.acts.ln2_mean[l * B * T..];
+        const l_ln2_rstd = model.acts.ln2_rstd[l * B * T..];
+        const l_fch = model.acts.fch[l * B * T * 4 * C..];
+        const l_fch_gelu = model.acts.fch_gelu[l * B * T * 4 * C..];
         // get the slices for the gradients of the activations for this layer
-        var dl_ln1 = model.grads_acts.ln1[l * B * T * C..];
-        var dl_qkv = model.grads_acts.qkv[l * B * T * 3 * C..];
-        var dl_atty = model.grads_acts.atty[l * B * T * C..];
-        var dl_preatt = model.grads_acts.preatt[l * B * NH * T * T..];
-        var dl_att = model.grads_acts.att[l * B * NH * T * T..];
-        var dl_attproj = model.grads_acts.attproj[l * B * T * C..];
-        var dl_residual2 = model.grads_acts.residual2[l * B * T * C..];
-        var dl_ln2 = model.grads_acts.ln2[l * B * T * C..];
-        var dl_fch = model.grads_acts.fch[l * B * T * 4 * C..];
-        var dl_fch_gelu = model.grads_acts.fch_gelu[l * B * T * 4 * C..];
-        var dl_fcproj = model.grads_acts.fcproj[l * B * T * C..];
-        var dl_residual3 = model.grads_acts.residual3[l * B * T * C..];
+        const dl_ln1 = model.grads_acts.ln1[l * B * T * C..];
+        const dl_qkv = model.grads_acts.qkv[l * B * T * 3 * C..];
+        const dl_atty = model.grads_acts.atty[l * B * T * C..];
+        const dl_preatt = model.grads_acts.preatt[l * B * NH * T * T..];
+        const dl_att = model.grads_acts.att[l * B * NH * T * T..];
+        const dl_attproj = model.grads_acts.attproj[l * B * T * C..];
+        const dl_residual2 = model.grads_acts.residual2[l * B * T * C..];
+        const dl_ln2 = model.grads_acts.ln2[l * B * T * C..];
+        const dl_fch = model.grads_acts.fch[l * B * T * 4 * C..];
+        const dl_fch_gelu = model.grads_acts.fch_gelu[l * B * T * 4 * C..];
+        const dl_fcproj = model.grads_acts.fcproj[l * B * T * C..];
+        const dl_residual3 = model.grads_acts.residual3[l * B * T * C..];
         // backward pass
         if( (C%VectorSize == 0) and (C>VectorSize) ){
             residual_backward(dl_residual2,dl_fcproj,dl_residual3,B*T*C);
@@ -1810,24 +1810,24 @@ fn gpt2_update(allocator: std.mem.Allocator, model :*GPT2, learning_rate:LlmFloa
         @memset(model.v_memory, 0);
         model.init_adam = true;
         }
-    var t_float : LlmFloat = @as(LlmFloat, @floatFromInt(t));
+    const t_float : LlmFloat = @as(LlmFloat, @floatFromInt(t));
 
     for(0..model.num_parameters) |i| {
-        var param = model.params_memory[i];
-        var grad = model.grads_memory[i];
+        const param = model.params_memory[i];
+        const grad = model.grads_memory[i];
         // update the first moment (momentum)
-        var m:LlmFloat = beta1 * model.m_memory[i] + (1.0 - beta1) * grad;
+        const m:LlmFloat = beta1 * model.m_memory[i] + (1.0 - beta1) * grad;
         // update the second moment (RMSprop)
-        var v:LlmFloat = beta2 * model.v_memory[i] + (1.0 - beta2) * grad * grad;
+        const v:LlmFloat = beta2 * model.v_memory[i] + (1.0 - beta2) * grad * grad;
         // bias-correct both moments
-        var m_hat:LlmFloat = m / (1.0 - cfuncs.powf(beta1, t_float));
-        var v_hat:LlmFloat = v / (1.0 - cfuncs.powf(beta2, t_float));
+        const m_hat:LlmFloat = m / (1.0 - cfuncs.powf(beta1, t_float));
+        const v_hat:LlmFloat = v / (1.0 - cfuncs.powf(beta2, t_float));
 
         // update
         model.m_memory[i] = m;
         model.v_memory[i] = v;
-        var sqrt_v_hat:LlmFloat = cfuncs.sqrtf(v_hat);
-        var tmp = learning_rate * (m_hat / (sqrt_v_hat + epsilon) + weigthed_decay * param);
+        const sqrt_v_hat:LlmFloat = cfuncs.sqrtf(v_hat);
+        const tmp = learning_rate * (m_hat / (sqrt_v_hat + epsilon) + weigthed_decay * param);
         model.params_memory[i] -= tmp;
         }
     }
@@ -1861,8 +1861,8 @@ fn dataloader_reset( loader:*DataLoader) void{
     loader.current_position = 0;
     }
 fn dataloader_next_batch(loader:*DataLoader) !void{
-    var B : u32 = loader.B;
-    var T : u32 = loader.T;
+    const B : u32 = loader.B;
+    const T : u32 = loader.T;
     if(loader.current_position + (B*T+1) * @sizeOf(i32) >= loader.file_size){
         loader.current_position = 0;
         }
@@ -1949,8 +1949,8 @@ pub fn main() !void {
         };
 
     printParams(model);
-    var train_tokens = "data/tiny_shakespeare_train.bin";
-    var val_tokens = "data/tiny_shakespeare_val.bin";
+    const train_tokens = "data/tiny_shakespeare_train.bin";
+    const val_tokens = "data/tiny_shakespeare_val.bin";
     var train_loader:DataLoader = undefined;
     try dataloader_init(allocator,&train_loader, train_tokens, B, T);
     try stdout.print("Using filename {s} for tokens, {s}!\n", .{train_tokens, "zig"});
@@ -1985,12 +1985,12 @@ pub fn main() !void {
                 var no_targets:[]u32 = undefined;
                 no_targets.len = 0;
                 try gpt2_forward(allocator, &model, gen_tokens, no_targets, 1, @as(u32, @intCast(t)));
-                var probs = model.acts.probs[(t-1)*model.config.vocab_size..];
-                var coin = rnd.random().float(LlmFloat);
-                var next_token = sample_mult(probs, model.config.vocab_size, coin);
+                const probs = model.acts.probs[(t-1)*model.config.vocab_size..];
+                const coin = rnd.random().float(LlmFloat);
+                const next_token = sample_mult(probs, model.config.vocab_size, coin);
                 gen_tokens[t] = next_token;
                 if (tokenizer.init_ok){
-                    var token_str = tokenizer_decode(tokenizer, next_token);
+                    const token_str = tokenizer_decode(tokenizer, next_token);
                     try stdout.print("{s}", .{token_str});
                     }
                 }
@@ -1999,7 +1999,7 @@ pub fn main() !void {
                 if(gen_tokens[t] == GPT2_EOT){
                     break;
                     }
-                var token = gen_tokens[t];
+                const token = gen_tokens[t];
                 try stdout.print("{d} ", .{token});
                 }
             }
