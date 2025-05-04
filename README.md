@@ -1,5 +1,7 @@
 # llm.zig
 
+For a complete and detailed explanation of the repo you can check the [DeepWiki](https://deepwiki.com/Saimirbaci/llm.zig)
+
 LLM training in Zig, inspired by [Andrej Karpathy](https://github.com/karpathy/llm.c).
 
 The goal is to have a simple, clean, and fast implementation of LLMs in Zig. 
@@ -46,3 +48,4 @@ zig build-exe -O ReleaseFast train_gpt2.zig
 ```bash
 ./train_gpt2
 ``` 
+
